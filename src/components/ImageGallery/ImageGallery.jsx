@@ -4,42 +4,58 @@ import pixabayAPI from '../../services/pixabay-api';
 import Loader from 'components/Loader';
 import ImageGalleryItem from 'components/ImageGalleryItem';
 import { StyledImageGallery } from './ImageGallery.styled';
+import Button from 'components/Button';
+import PropTypes from 'prop-types';
 
 export default class ImageGallery extends Component {
   state = {
-    query: null,
+    images: [],
     page: 1,
     error: null,
     status: 'idle',
   };
 
-  componentDidUpdate(prevProps, _) {
+  componentDidUpdate(prevProps) {
     const prevQuery = prevProps.searchQuery;
     const nextQuery = this.props.searchQuery;
 
     if (prevQuery !== nextQuery) {
-      this.setState({ status: 'pending' });
-      pixabayAPI
-        .getImages(nextQuery, this.state.page)
-        .then(data => {
-          if (data.hits.length === 0) {
-            toast.error(
-              `Unfortunately, no results were found for the query '${nextQuery}'`
-            );
-            this.setState({ status: 'idle' });
-            return;
-          }
-          this.setState({ query: data, status: 'resolved' });
-        })
-
-        .catch(error => {
-          this.setState({ error, status: 'rejected' });
-          toast.error(`Error: ${error.message}`);
-        });
+      this.setState({ status: 'pending', images: [], page: 1 });
+      this.fetchImages(nextQuery, 1);
     }
   }
+
+  fetchImages = (query, page) => {
+    pixabayAPI
+      .getImages(query, page)
+      .then(data => {
+        if (data.hits.length === 0) {
+          toast.error(`No results found for '${query}'`);
+          this.setState({ status: 'idle' });
+          return;
+        }
+
+        this.setState(prevState => ({
+          images: [...prevState.images, ...data.hits],
+          status: 'resolved',
+        }));
+      })
+      .catch(error => {
+        this.setState({ error, status: 'rejected' });
+        toast.error(`Error: ${error.message}`);
+      });
+  };
+
+  handleLoadMore = () => {
+    const { searchQuery } = this.props;
+    this.setState(
+      prevState => ({ page: prevState.page + 1 }),
+      () => this.fetchImages(searchQuery, this.state.page)
+    );
+  };
+
   render() {
-    const { query, error, status } = this.state;
+    const { images, error, status } = this.state;
 
     if (status === 'pending') {
       return <Loader />;
@@ -55,17 +71,26 @@ export default class ImageGallery extends Component {
 
     if (status === 'resolved') {
       return (
-        <StyledImageGallery>
-          {query.hits.map(({ id, webformatURL, largeImageURL, tags }) => (
-            <ImageGalleryItem
-              key={id}
-              webformatURL={webformatURL}
-              largeImageURL={largeImageURL}
-              tags={tags}
-            />
-          ))}
-        </StyledImageGallery>
+        <>
+          <StyledImageGallery>
+            {images.map(({ id, webformatURL, largeImageURL, tags }, index) => (
+              <ImageGalleryItem
+                key={`${id}-${index}`}
+                webformatURL={webformatURL}
+                largeImageURL={largeImageURL}
+                tags={tags}
+              />
+            ))}
+          </StyledImageGallery>
+          {images.length > 0 && images.length % 12 === 0 && (
+            <Button onClick={this.handleLoadMore} />
+          )}
+        </>
       );
     }
   }
 }
+
+ImageGallery.propTypes = {
+  searchQuery: PropTypes.string.isRequired,
+};
